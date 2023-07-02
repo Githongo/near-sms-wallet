@@ -7,6 +7,7 @@ import { encryptData, decryptData } from './services/encryption';
 
 import { createWallet } from './services/createWallet';
 import { sendToken } from './services/sendTokens';
+import { sendSms } from './services/sendSms';
 
 dotenv.config();
 
@@ -29,30 +30,111 @@ let menu = new UssdMenu();
 const router = express.Router();
 let recipentName:string=''
 let recipientAmount:number;
+let user:any = null;
+let addressId: string;
+let pin:number;
 
 const privKey = process.env.SENDER_PRIVATE_KEY2
 menu.startState({
-    run: async ()=>{
-        //TODO logic to create account and verifying if account exists
-
+  run: () => {},
+  next: {
+    '': async () => {
+        //TODO: Create and store session
         let phone = menu.args.phoneNumber;
-
-        // TODO create wallet and save encrypted hashes of the keys  also verify if account exists
-
-        const wallet:any = await createWallet();
-        
-        console.log('current user phone: ', phone)
-        menu.con('Welcome to the Dhamana Menu' + 
-        '\n1. Send Money' +
-        '\n2. My Account' +
-        '\n3. Withdraw to Mobile Money'
-        );
-    },
-    next: {
-        '1': 'sendMoney',
-        '2': 'myAccount',
-        '3': 'WithdrawToMobileMoney'
+        const query = await User.findOne({ 'phone': phone }).exec();
+        console.log('retreived user'+query)
+        user = query;
+        if(user){
+            return 'userMenu';
+        }
+        else {
+            return 'registerMenu';
+        }
     }
+}
+})
+
+menu.state('registerMenu', {
+  run: async() => {
+    let phone = menu.args.phoneNumber;
+
+    // TODO create wallet and save encrypted hashes of the keys  also verify if account exists
+
+    // const wallet:any = await createWallet();
+    menu.con('Welcome to Dhamana Wallet. To access services, we need you to opt in for services'+
+            '\n1. Opt in' +
+            '\n2. No thanks');
+  },
+  next: {
+    '1': 'newUser',
+
+  }
+
+})
+
+menu.state('newUser', {
+  run: ()=>{
+      //TODO: Check that addressId isn't taken
+      menu.con("Please enter your preferred name (accountId) e.g. john.testnet")
+  },
+  next: {
+      '*[.\w]+':'newUser.pin'
+  }
+})
+
+menu.state('newUser.pin', {
+  run: () => {
+      menu.con('Enter a 4 digit PIN you will be using for verification')
+      let addressName=menu.val
+      console.log('addressId: ',addressName)
+      addressId = addressName;
+  },
+  next:{
+    '*^[0-9]*$':'createUser'
+  }
+})
+
+menu.state('createUser', {
+  run: async () => {
+      let userPin=parseInt(menu.val);
+      console.log('pin: ',userPin);
+      pin = userPin;
+
+      const wallet:any = await createWallet();
+
+      let userDetails = {
+        phone: menu.args.phoneNumber,
+        address: addressId,
+        publicKey: wallet.publicKey,
+        privateKey: encryptData(pin.toString(), wallet.secretKey),
+        seedPhrase: encryptData(pin.toString(), wallet.seedPhrase),
+        createdAt: Date.now()
+      };
+
+      let user = new User(userDetails);
+      await user.save();
+      // sendSms(`Hi there. Your Dhamana Wallet has been set up. It is active and linked to your number ending with XXXXXX${user.phone.slice(-3)}. \n ~Dhamana Team.`)
+      menu.end("Thank you. Your request is being processed. \n A notification will be sent once registration is complete.");
+  }
+})
+
+menu.state('userMenu', {
+  run: async ()=>{
+
+      let phone = menu.args.phoneNumber
+      
+      console.log('current user phone: ', phone)
+      menu.con('Welcome to the Dhamana Menu' + 
+      '\n1. Send Money' +
+      '\n2. My Account' +
+      '\n3. Withdraw to Mobile Money'
+      );
+  },
+  next: {
+      '1': 'sendMoney',
+      '2': 'myAccount',
+      '3': 'WithdrawToMobileMoney'
+  }
 })
 
 menu.state('WithdrawToMobileMoney', {

@@ -17,5 +17,12 @@ const userSchema = new Schema({
         required: true,
         type: String
     },
+    seedPhrase: {
+        required: true,
+        type: String
+    },
+    createdAt: {
+      type: Date
+    }
 });
 export const User = model("User", userSchema);
