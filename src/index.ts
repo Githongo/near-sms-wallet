@@ -24,7 +24,6 @@ database.once('connected', ()=>{
     console.log('Database connected...')
 })
 
-
 let menu = new UssdMenu();
 
 const router = express.Router();
@@ -34,7 +33,6 @@ let user:any = null;
 let addressId: string;
 let pin:number;
 
-const privKey = process.env.SENDER_PRIVATE_KEY2
 menu.startState({
   run: () => {},
   next: {
@@ -56,18 +54,14 @@ menu.startState({
 
 menu.state('registerMenu', {
   run: async() => {
-    let phone = menu.args.phoneNumber;
 
-    // TODO create wallet and save encrypted hashes of the keys  also verify if account exists
-
-    // const wallet:any = await createWallet();
     menu.con('Welcome to Dhamana Wallet. To access services, we need you to opt in for services'+
             '\n1. Opt in' +
             '\n2. No thanks');
   },
   next: {
     '1': 'newUser',
-
+    '2': 'optedOut'
   }
 
 })
@@ -180,21 +174,25 @@ menu.state('amount', {
 menu.state('pin', {
     run: async () => {
         console.log('pin: ', menu.val)
-
-        // TODO decrypt stored seedPhrase hash and store in a variable
-        // TODO pass the seedPhrase hash to retrieve public key and secret key
-        // TODO use this keys to send amount
-
-        // send money here
-        const receipt:any = sendToken(
-            recipentName,
-            'notmutebi.testnet',
-            privKey!,
-            recipientAmount,
-            menu.args.phoneNumber,
-        )
+        let pin = menu.val;
+        const query = await User.findOne({ 'phone': menu.args.phoneNumber }).exec();
+        console.log('Sending user: '+query)
+        user = query;
+        let key = decryptData(pin, user.privateKey)
+        //TODO: Check if recipient's address exists
+        if(typeof(key) == 'string'){
+            const receipt:any = sendToken(
+              recipentName,
+              user.address,
+              key,
+              recipientAmount,
+              menu.args.phoneNumber,
+          )
+            menu.end('The transaction is being processed. A notification will be sent')
+        }else{
+          menu.end('Error verifying your request.')
+        }
         
-        menu.end('The transaction is being processed. A notification will be sent')
     }
 })
 
@@ -212,17 +210,24 @@ menu.state('myAccount', {
 
 menu.state('checkBalance', {
     run: ()=>{
-        // fetch balance using address 
-        menu.end('Balance: 1000cUSD')
+        //TODO: fetch balance using address 
+        menu.end('Your account balance will be sent to you')
     }
 })
 
 menu.state('accountDetails', {
     run: ()=>{
-        // fetch account details (resolve celo name)
+        //TODO: fetch account details
         menu.end('Your account details will be sent to you')
     }
 })
+
+menu.state('optedOut', {
+  run: ()=>{
+      menu.end('If you change your mind, dial the shortcode again')
+  }
+})
+
 
 
 router.post("/", (req, res) => {
@@ -232,14 +237,10 @@ router.post("/", (req, res) => {
         phoneNumber: req.body.phoneNumber,
         text: req.body.text
     }
-
-    // check if user exists in db first
     menu.run(args, (ussdResult: any) => {
         res.send(ussdResult);
     });
 
-
   });
-
   
 module.exports = router;

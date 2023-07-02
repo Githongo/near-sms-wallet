@@ -21,5 +21,3 @@ export const createWallet = async()=>{
     }
 
 }
-
-createWallet()
